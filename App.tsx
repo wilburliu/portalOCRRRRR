@@ -5,10 +5,8 @@ const App: React.FC = () => {
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   /* 
-     UPDATED: Robust Input Filling
-     We now use Object.getOwnPropertyDescriptor to set the value. 
-     This forces React/Angular to acknowledge the change, whereas 
-     simple element.value = 'x' is often ignored by modern frameworks.
+     UPDATED: Specific Target Support
+     Added 'input#txtVerifyCode' as the primary selector for the portal.
   */
   const bookmarkletCode = `
     (function() {
@@ -68,8 +66,9 @@ const App: React.FC = () => {
           updateUI('Ghost OCR Initializing...');
 
           /* 1. Find Elements */
+          /* Added input#txtVerifyCode as primary target */
           var img = document.querySelector('img[src*="Captcha" i], img[id*="Captcha" i], img[id*="Vcode" i], img[src*="code" i], img[src*="Verify" i], canvas[id*="Captcha" i]');
-          var input = document.querySelector('input[name*="Captcha" i], input[id*="Captcha" i], input[id*="Verify" i], input[id*="Vcode" i], input[placeholder*="驗證碼"], input[id*="Validate" i]');
+          var input = document.querySelector('input#txtVerifyCode, input[name*="Captcha" i], input[id*="Captcha" i], input[id*="Verify" i], input[id*="Vcode" i], input[placeholder*="驗證碼"], input[id*="Validate" i]');
 
           /* 2. Manual Fallback if detection fails */
           if (!img) {
@@ -207,13 +206,13 @@ const App: React.FC = () => {
       <div className="max-w-3xl w-full space-y-12">
         <header className="text-center space-y-4">
           <div className="inline-flex items-center px-4 py-1.5 bg-violet-500/10 border border-violet-500/20 text-violet-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v2.3 - Auto-Fill Fix
+            v2.4 - Target Update
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
             GHOST <span className="text-violet-500">OCR</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
-            Updated with robust form-filling technology. Forces text into React, Angular, and legacy inputs.
+            Optimized for <code>#txtVerifyCode</code> targeting.
           </p>
         </header>
 
@@ -234,13 +233,13 @@ const App: React.FC = () => {
               className="group relative px-12 py-6 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-black text-xl flex items-center space-x-4 shadow-2xl shadow-violet-900/40 transition-all hover:-translate-y-2 select-none cursor-move z-10"
               onClick={(e) => e.preventDefault()}
             >
-              <span>GHOST FILL v2.3</span>
+              <span>GHOST FILL v2.4</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
             </a>
             <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-bold">
-              Fix: Robust Framework Bypass
+              Target: #txtVerifyCode
             </p>
           </div>
 
@@ -254,15 +253,15 @@ const App: React.FC = () => {
                </div>
                <div className="flex items-start space-x-3">
                  <div className="text-violet-400 font-bold">2.</div>
-                 <p className="text-sm text-slate-400">Drag the new <strong>GHOST FILL v2.3</strong> button to your bookmarks bar.</p>
+                 <p className="text-sm text-slate-400">Drag the new <strong>GHOST FILL v2.4</strong> button to your bookmarks bar.</p>
                </div>
                <div className="flex items-start space-x-3">
                  <div className="text-violet-400 font-bold">3.</div>
-                 <p className="text-sm text-slate-400">Go to the portal. Click the bookmark. It will now force-fill the text.</p>
+                 <p className="text-sm text-slate-400">Go to the portal. Click the bookmark. It will auto-fill <code>#txtVerifyCode</code>.</p>
                </div>
                <div className="p-3 bg-violet-900/20 border border-violet-500/20 rounded-xl mt-2">
                  <p className="text-[10px] text-violet-300">
-                   <strong>Tech Note:</strong> The v2.3 update uses <code>Object.getOwnPropertyDescriptor</code> to bypass React/Vue state protections, ensuring the input value is actually registered by the site.
+                   <strong>Tech Note:</strong> The script now prioritizes elements with the ID <code>txtVerifyCode</code> for immediate filling.
                  </p>
                </div>
             </div>
@@ -270,7 +269,7 @@ const App: React.FC = () => {
         </div>
 
         <footer className="text-center text-slate-700 text-[10px] uppercase tracking-[0.4em] font-medium">
-          Refactored for Stability &bull; v2.3
+          Refactored for Stability &bull; v2.4
         </footer>
       </div>
     </div>
