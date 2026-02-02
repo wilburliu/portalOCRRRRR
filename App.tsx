@@ -1,23 +1,81 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
+type EngineType = 'fast' | 'enhanced';
 
 const App: React.FC = () => {
   const linkRef = useRef<HTMLAnchorElement>(null);
+  const [engine, setEngine] = useState<EngineType>('enhanced');
 
   /* 
-     UPDATED v2.6:
-     1. OCR Accuracy Boost: Images are now upscaled 3x before processing. Tesseract works much better on larger text.
-     2. Improved Binarization: Adjusted threshold for cleaner text separation.
-     3. Retained Name/Iframe targeting logic.
+     V5.0 LOGIC GENERATOR 
+     Includes a pure JS computer vision pipeline to clean images before OCR.
   */
-  const bookmarkletCode = `
-    (function() {
-      if (window.ghostOCRActive) {
-        alert('Ghost OCR is already running. Please reload the page if stuck.');
-        return;
+  const getBookmarkletCode = () => {
+    
+    /* 
+      ADVANCED IMAGE PROCESSING KERNEL 
+      This runs inside the browser to clean the CAPTCHA.
+    */
+    const visionKernel = `
+      function processImage(canvas) {
+        var ctx = canvas.getContext('2d');
+        var w = canvas.width;
+        var h = canvas.height;
+        var idata = ctx.getImageData(0,0,w,h);
+        var d = idata.data;
+        
+        /* 1. Grayscale Conversion */
+        var gray = new Uint8Array(w*h);
+        var totalLum = 0;
+        for(var i=0; i<d.length; i+=4){
+            // Standard luminance formula
+            var lum = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+            gray[i/4] = lum;
+            totalLum += lum;
+        }
+        var avgLum = totalLum / (w*h);
+        
+        /* 2. Auto-Invert (if dark background) */
+        // If average brightness is low, flip to white background
+        if(avgLum < 128) {
+            for(var i=0; i<gray.length; i++) gray[i] = 255 - gray[i];
+        }
+        
+        /* 3. Median Filter (Noise Removal) */
+        // Good for removing random dots (salt-and-pepper noise)
+        var cleaned = new Uint8Array(w*h);
+        for(var y=1; y<h-1; y++){
+            for(var x=1; x<w-1; x++){
+                var idx = y*w + x;
+                // Get 3x3 neighborhood
+                var arr = [
+                    gray[idx-w-1], gray[idx-w], gray[idx-w+1],
+                    gray[idx-1],   gray[idx],   gray[idx+1],
+                    gray[idx+w-1], gray[idx+w], gray[idx+w+1]
+                ];
+                // Sort to find median
+                arr.sort(function(a,b){return a-b});
+                cleaned[idx] = arr[4]; // The middle value
+            }
+        }
+        
+        /* 4. High Contrast Binarization (Thresholding) */
+        // Convert to pure Black/White
+        for(var i=0; i<d.length; i+=4) {
+            var val = cleaned[i/4] < 145 ? 0 : 255; 
+            d[i] = d[i+1] = d[i+2] = val;
+            // Remove Alpha
+            d[i+3] = 255;
+        }
+        
+        ctx.putImageData(idata, 0, 0);
       }
-      window.ghostOCRActive = true;
+    `;
 
+    const commonSetup = `
+      if (window.ghostOCRActive) { alert('Ghost OCR running.'); return; }
+      window.ghostOCRActive = true;
       var UI_ID = 'ghost-ocr-hud';
       
       function cleanup() {
@@ -26,7 +84,7 @@ const App: React.FC = () => {
         if (el) el.remove();
       }
 
-      function updateUI(text, progress, isError) {
+      function updateUI(text, isError) {
         var hud = document.getElementById(UI_ID);
         if (!hud) {
           hud = document.createElement('div');
@@ -35,228 +93,225 @@ const App: React.FC = () => {
           document.body.appendChild(hud);
         }
         if (isError) {
-          hud.style.borderColor = '#ef4444';
-          hud.style.color = '#fca5a5';
+            hud.style.borderColor = '#ef4444';
+            hud.style.color = '#fca5a5';
         }
-        var icon = isError ? '❌' : '⚡';
-        var progText = (progress && progress < 1) ? Math.round(progress * 100) + '%' : '';
-        hud.innerHTML = icon + ' <span style="margin-left:5px">' + text + ' ' + progText + '</span>';
+        hud.innerHTML = (isError ? '❌ ' : '⚡ ') + text;
       }
 
-      function loadScript(src) {
-        return new Promise(function(resolve, reject) {
-          if (typeof Tesseract !== 'undefined') return resolve();
-          var s = document.createElement('script');
-          s.src = src;
-          s.onload = resolve;
-          s.onerror = function() { reject(new Error('Failed to load OCR engine. Site might block external scripts (CSP).')); };
-          document.head.appendChild(s);
-        });
+      function findElements() {
+          function search(root, s) {
+              var el = root.querySelector(s);
+              if(el) return el;
+              var f = root.querySelectorAll('iframe,frame');
+              for(var i=0; i<f.length; i++){
+                  try {
+                      var d = f[i].contentDocument || f[i].contentWindow.document;
+                      if(d) { el = search(d, s); if(el) return el; }
+                  } catch(e){}
+              }
+              return null;
+          }
+          var img = search(document, 'img[src*="Captcha" i], img[id*="Captcha" i], img[id*="Vcode" i], img[src*="code" i], canvas[id*="Captcha" i]');
+          var inp = search(document, 'input[name="txtVerifyCode"], input[id="txtVerifyCode"], input[name*="Verify" i], input[id*="Captcha" i]');
+          if(!inp) inp = search(document, 'input[type="text"]:not([readonly])');
+          return { img: img, input: inp };
       }
+    `;
 
-      function findElement(selectors) {
-        var el = document.querySelector(selectors);
-        if (el) return el;
-        var frames = document.querySelectorAll('iframe, frame');
-        for (var i = 0; i < frames.length; i++) {
-          try {
-            var doc = frames[i].contentDocument || frames[i].contentWindow.document;
-            if (doc) {
-                el = doc.querySelector(selectors);
-                if (el) return el;
-            }
-          } catch(e) { }
-        }
-        return null;
-      }
-
+    const runLogic = `
       async function run() {
         try {
-          updateUI('Ghost OCR v2.6 Init...');
+          updateUI('Ghost v5.0 (${engine === 'enhanced' ? 'High Acc' : 'Fast'})...');
+          var els = findElements();
+          var img = els.img;
+          var input = els.input;
 
-          var imgSelectors = 'img[src*="Captcha" i], img[id*="Captcha" i], img[id*="Vcode" i], img[src*="code" i], img[src*="Verify" i], canvas[id*="Captcha" i]';
-          var inputSelectors = [
-            'input[name="txtVerifyCode"]',
-            'input[id="txtVerifyCode"]',
-            'input[name*="VerifyCode" i]',
-            'input[id*="VerifyCode" i]',
-            'input[name*="Captcha" i]',
-            'input[id*="Captcha" i]',
-            'input[name="checkCode"]',
-            'input[placeholder*="驗證碼"]'
-          ].join(',');
-
-          var img = findElement(imgSelectors);
-          var input = findElement(inputSelectors);
-
-          if (!img) {
-            updateUI('Select CAPTCHA image (Click it)...');
-            img = await new Promise(function(resolve) {
-              function h(e) { e.preventDefault(); e.stopPropagation(); document.removeEventListener('click', h, true); resolve(e.target); }
-              document.addEventListener('click', h, true);
-            });
-          }
-
-          if (!input) {
-             input = findElement('input[type="text"]:not([readonly]), input:not([type])');
-             if (!input) {
-               updateUI('Select Input Box (Click it)...');
-               input = await new Promise(function(resolve) {
-                function h(e) { e.preventDefault(); e.stopPropagation(); document.removeEventListener('click', h, true); resolve(e.target); }
+          if (!img || !input) {
+            if(!img) updateUI('Click CAPTCHA...', true);
+            else updateUI('Click Input...', true);
+            var clicked = await new Promise(r => {
+                function h(e){ e.preventDefault(); e.stopPropagation(); document.removeEventListener('click',h,true); r(e.target); }
                 document.addEventListener('click', h, true);
-              });
-             }
+            });
+            if(!img) img = clicked; else input = clicked;
           }
 
           input.style.border = '2px solid #8b5cf6';
-          input.focus();
-
           updateUI('Loading Engine...');
-          await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
-          updateUI('Enhancing Image...');
           
-          /* ACCURACY BOOST: Upscale Image 3x */
-          var scale = 3; 
-          var canvas = document.createElement('canvas');
-          var ctx = canvas.getContext('2d');
-          
-          var w, h;
-          if (img instanceof HTMLImageElement) {
-             if (!img.complete) await new Promise((r) => img.onload = r);
-             w = img.naturalWidth || img.width;
-             h = img.naturalHeight || img.height;
-          } else {
-             w = img.width;
-             h = img.height;
+          if (typeof Tesseract === 'undefined') {
+              await new Promise((resolve, reject) => {
+                  var s = document.createElement('script');
+                  s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+                  s.onload = resolve;
+                  s.onerror = reject;
+                  document.head.appendChild(s);
+              });
           }
-          
-          canvas.width = w * scale;
-          canvas.height = h * scale;
-          
-          /* Draw Scaled (No smoothing for sharp edges) */
-          try {
-             ctx.imageSmoothingEnabled = false;
-             ctx.drawImage(img, 0, 0, w * scale, h * scale);
-          } catch(e) { throw new Error('Security Error: Browser blocked reading image.'); }
 
-          /* Pre-processing: Grayscale + High Contrast Threshold */
-          var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          var d = imageData.data;
-          for (var i=0; i<d.length; i+=4) {
-             var r=d[i], g=d[i+1], b=d[i+2];
-             var v = 0.2126*r + 0.7152*g + 0.0722*b; // Standard Luminance
-             /* Threshold: If darker than 145 (light grey), make it black. Else white. */
-             var bin = v > 145 ? 255 : 0;
-             d[i] = d[i+1] = d[i+2] = bin;
-          }
-          ctx.putImageData(imageData, 0, 0);
+          var c = document.createElement('canvas');
+          var ctx = c.getContext('2d');
+          if(img instanceof HTMLImageElement && !img.complete) await new Promise(r => img.onload = r);
+          
+          /* Upscale Factor: Enhanced uses 4x, Fast uses 2x */
+          var scale = ${engine === 'enhanced' ? 4 : 2};
+          var w = img.naturalWidth || img.width || 100;
+          var h = img.naturalHeight || img.height || 30;
+          c.width = w * scale;
+          c.height = h * scale;
+          
+          /* Draw Scaled */
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(img, 0, 0, c.width, c.height);
 
-          var worker = await Tesseract.createWorker('eng', 1, {
-            logger: function(m) { if (m.status === 'recognizing text') updateUI('Solving...', m.progress); }
+          /* Apply Filters if Enhanced */
+          ${engine === 'enhanced' ? 'updateUI("De-noising..."); processImage(c);' : ''}
+
+          updateUI('Reading Text...');
+          var worker = await Tesseract.createWorker('eng', 1);
+          /* Strict Allowlist */
+          await worker.setParameters({ 
+            tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+            tessedit_pageseg_mode: '7' // Treat image as a single text line
           });
           
-          /* Whitelist alphanumeric only */
-          await worker.setParameters({ tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' });
-          var res = await worker.recognize(canvas);
+          var res = await worker.recognize(c);
           await worker.terminate();
-          
+
           var text = res.data.text.replace(/[^a-zA-Z0-9]/g, '').trim();
-          if (!text) throw new Error('OCR empty. Try again.');
-
-          /* Fill Value */
-          var tracker = input._valueTracker;
-          if (tracker) { tracker.setValue(text); }
+          if(!text) throw new Error('OCR Failed');
           
-          var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-          if (nativeSetter) {
-            nativeSetter.call(input, text);
-          } else {
-            input.value = text;
-          }
-
+          input.value = text;
           input.dispatchEvent(new Event('input', { bubbles: true }));
           input.dispatchEvent(new Event('change', { bubbles: true }));
-          input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
           
           updateUI('FILLED: ' + text);
-          input.style.backgroundColor = '#dbeafe';
           setTimeout(cleanup, 2000);
-
-        } catch (e) {
-          console.error(e);
-          updateUI('Error: ' + (e.message || e), 0, true);
-          setTimeout(cleanup, 5000);
+        } catch(e) {
+            console.error(e);
+            updateUI('Error: ' + e.message, true);
+            setTimeout(cleanup, 4000);
         }
       }
+    `;
 
-      run();
-    })();
-  `.replace(/\s+/g, ' ');
-
-  const bookmarkletUrl = `javascript:${encodeURIComponent(bookmarkletCode)}`;
+    // Combine scripts
+    const fullScript = `(function(){ 
+        ${visionKernel}
+        ${commonSetup} 
+        ${runLogic} 
+        run(); 
+    })();`.replace(/\s+/g, ' ');
+    
+    return fullScript;
+  };
 
   useEffect(() => {
     if (linkRef.current) {
-      linkRef.current.href = bookmarkletUrl;
+      linkRef.current.href = `javascript:${encodeURIComponent(getBookmarkletCode())}`;
     }
-  }, [bookmarkletUrl]);
+  }, [engine]);
 
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-300 flex flex-col items-center justify-center p-6 lg:p-12">
-      <div className="max-w-3xl w-full space-y-12">
+    <div className="min-h-screen bg-[#050505] text-slate-300 flex flex-col items-center justify-center p-6 lg:p-12 font-sans">
+      <div className="max-w-4xl w-full space-y-10">
         <header className="text-center space-y-4">
-          <div className="inline-flex items-center px-4 py-1.5 bg-violet-500/10 border border-violet-500/20 text-violet-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v2.6 - High Accuracy Mode
+          <div className="inline-flex items-center px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs font-bold tracking-widest uppercase">
+            v5.0 - Neural Polish
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
-            GHOST <span className="text-violet-500">OCR</span>
+            GHOST <span className={engine === 'enhanced' ? "text-emerald-500" : "text-slate-500"}>OCR</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
-            Enhanced with 3x upscaling and contrast boosting for maximum accuracy.
+            Advanced client-side computer vision. No installation. No API keys.
           </p>
         </header>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          <div className="bg-slate-900/40 backdrop-blur-xl border border-violet-500/10 p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center space-y-8 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50"></div>
-            <div className="w-20 h-20 bg-violet-600/20 rounded-3xl flex items-center justify-center text-violet-500 shadow-inner">
+        {/* Engine Switcher */}
+        <div className="flex justify-center">
+            <div className="bg-slate-900/80 p-1.5 rounded-xl border border-white/10 flex space-x-2">
+                <button 
+                    onClick={() => setEngine('fast')}
+                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${engine === 'fast' ? 'bg-slate-700 text-white shadow-lg' : 'hover:text-white text-slate-500'}`}
+                >
+                    Fast Mode
+                </button>
+                <button 
+                    onClick={() => setEngine('enhanced')}
+                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${engine === 'enhanced' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'hover:text-white text-slate-500'}`}
+                >
+                    High Accuracy (Pre-Process)
+                </button>
+            </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8 items-start">
+          {/* Left: Installer */}
+          <div className={`bg-slate-900/40 backdrop-blur-xl border p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center space-y-8 shadow-2xl relative overflow-hidden transition-colors ${engine === 'enhanced' ? 'border-emerald-500/10' : 'border-slate-500/10'}`}>
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent opacity-50 ${engine === 'enhanced' ? 'via-emerald-500' : 'via-slate-500'}`}></div>
+            
+            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shadow-inner ${engine === 'enhanced' ? 'bg-emerald-600/20 text-emerald-500' : 'bg-slate-700/20 text-slate-400'}`}>
               <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
             </div>
+            
             <a
               ref={linkRef}
               href="#"
-              className="group relative px-12 py-6 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-black text-xl flex items-center space-x-4 shadow-2xl shadow-violet-900/40 transition-all hover:-translate-y-2 select-none cursor-move z-10"
+              className={`group relative px-12 py-6 rounded-2xl text-white font-black text-xl flex items-center space-x-4 shadow-2xl transition-all hover:-translate-y-2 select-none cursor-move z-10 ${engine === 'enhanced' ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/40' : 'bg-slate-600 hover:bg-slate-500'}`}
               onClick={(e) => e.preventDefault()}
             >
-              <span>GHOST FILL v2.6</span>
+              <span>{engine === 'enhanced' ? 'GHOST VISION v5.0' : 'GHOST LITE v5.0'}</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
             </a>
             <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-bold">
-              300% Scale + High Contrast
+              {engine === 'enhanced' ? 'Median Filter + Auto-Invert + 4x Scale' : '2x Scale Only'}
             </p>
           </div>
 
-          <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-10 rounded-[2.5rem] space-y-6">
-            <h3 className="text-xl font-bold text-white uppercase tracking-tighter">Instructions</h3>
-            <div className="space-y-4">
-               <div className="flex items-start space-x-3">
-                 <div className="text-red-400 font-bold">1.</div>
-                 <p className="text-sm text-slate-400"><strong>Delete</strong> your old bookmark.</p>
+          {/* Right: Instructions */}
+          <div className="space-y-6">
+              <div className={`bg-slate-900/40 backdrop-blur-xl border p-8 rounded-[2rem] space-y-6 ${engine === 'enhanced' ? 'border-emerald-500/20' : 'border-white/5'}`}>
+                  <h3 className="text-xl font-bold text-white uppercase tracking-tighter flex items-center gap-2">
+                     {engine === 'enhanced' ? 'Enhancement Pipeline' : 'Fast Mode'}
+                  </h3>
+                  <p className="text-sm text-slate-400">
+                      {engine === 'enhanced' 
+                        ? 'Runs a pure JavaScript computer vision pipeline in your browser. It removes noise dots (Median Filter), detects dark backgrounds (Auto-Invert), and sharpens text (Binarization) before reading.' 
+                        : 'Quickly upscales the image and reads it. Good for clean, large text.'}
+                  </p>
+                  
+                  {engine === 'enhanced' && (
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="bg-black/40 p-3 rounded-xl border border-white/5">
+                              <div className="text-emerald-400 font-bold text-lg">4x</div>
+                              <div className="text-[10px] text-slate-500 uppercase">Upscale</div>
+                          </div>
+                          <div className="bg-black/40 p-3 rounded-xl border border-white/5">
+                              <div className="text-emerald-400 font-bold text-lg">NOISE</div>
+                              <div className="text-[10px] text-slate-500 uppercase">Removal</div>
+                          </div>
+                          <div className="bg-black/40 p-3 rounded-xl border border-white/5">
+                              <div className="text-emerald-400 font-bold text-lg">BW</div>
+                              <div className="text-[10px] text-slate-500 uppercase">Binary</div>
+                          </div>
+                      </div>
+                  )}
+              </div>
+
+               <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-8 rounded-[2rem] space-y-4">
+                  <h4 className="text-sm font-bold text-slate-300 uppercase">Deployment</h4>
+                   <ul className="space-y-3 text-sm text-slate-400">
+                        <li className="flex gap-3"><span className="text-emerald-400 font-bold">1.</span> <span>Drag button to bookmarks bar.</span></li>
+                        <li className="flex gap-3"><span className="text-emerald-400 font-bold">2.</span> <span>Go to Hospital Portal.</span></li>
+                        <li className="flex gap-3"><span className="text-emerald-400 font-bold">3.</span> <span>Click to Auto-Fill.</span></li>
+                    </ul>
                </div>
-               <div className="flex items-start space-x-3">
-                 <div className="text-violet-400 font-bold">2.</div>
-                 <p className="text-sm text-slate-400">Drag <strong>v2.6</strong> to your bookmarks bar.</p>
-               </div>
-               <div className="flex items-start space-x-3">
-                 <div className="text-violet-400 font-bold">3.</div>
-                 <p className="text-sm text-slate-400">Click it on the portal. It will search inside iframes and auto-fill.</p>
-               </div>
-            </div>
           </div>
         </div>
       </div>
