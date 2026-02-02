@@ -1,7 +1,9 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 const App: React.FC = () => {
+  const linkRef = useRef<HTMLAnchorElement>(null);
+
   /* 
      CRITICAL FIX: 
      1. Removed all single-line comments (//) because they break the code when newlines are removed.
@@ -177,25 +179,33 @@ const App: React.FC = () => {
       run();
 
     })();
-  `.replace(/\s+/g, ' '); // Basic minification: replaces newlines/spaces with single space
+  `.replace(/\s+/g, ' ');
+
+  const bookmarkletUrl = `javascript:${encodeURIComponent(bookmarkletCode)}`;
 
   /* 
-     NOTE: We use encodeURIComponent to ensure special characters like % don't break the bookmarklet 
+     Fix for React 19+: React now blocks 'javascript:' URLs in href attributes 
+     for security. We use a ref to manually set the href after mount, 
+     bypassing React's validation.
   */
-  const bookmarkletUrl = `javascript:${encodeURIComponent(bookmarkletCode)}`;
+  useEffect(() => {
+    if (linkRef.current) {
+      linkRef.current.href = bookmarkletUrl;
+    }
+  }, [bookmarkletUrl]);
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-300 flex flex-col items-center justify-center p-6 lg:p-12">
       <div className="max-w-3xl w-full space-y-12">
         <header className="text-center space-y-4">
           <div className="inline-flex items-center px-4 py-1.5 bg-violet-500/10 border border-violet-500/20 text-violet-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v2.1 - Critical Fix
+            v2.2 - React Security Fix
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
             GHOST <span className="text-violet-500">OCR</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
-            Fixed execution issues. Drag the new button below to replace the old one.
+            Fixed browser security blocking. Drag the new button below to replace the old one.
           </p>
         </header>
 
@@ -211,17 +221,18 @@ const App: React.FC = () => {
             </div>
             
             <a
-              href={bookmarkletUrl}
+              ref={linkRef}
+              href="#" /* React safe placeholder, replaced by useEffect */
               className="group relative px-12 py-6 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-black text-xl flex items-center space-x-4 shadow-2xl shadow-violet-900/40 transition-all hover:-translate-y-2 select-none cursor-move z-10"
               onClick={(e) => e.preventDefault()}
             >
-              <span>GHOST FILL v2.1</span>
+              <span>GHOST FILL v2.2</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
             </a>
             <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-bold">
-              Fix: Removed comments that blocked execution
+              Fix: Bypassed React 19 HREF blocking
             </p>
           </div>
 
@@ -235,7 +246,7 @@ const App: React.FC = () => {
                </div>
                <div className="flex items-start space-x-3">
                  <div className="text-violet-400 font-bold">2.</div>
-                 <p className="text-sm text-slate-400">Drag the new <strong>GHOST FILL v2.1</strong> button to your bookmarks bar.</p>
+                 <p className="text-sm text-slate-400">Drag the new <strong>GHOST FILL v2.2</strong> button to your bookmarks bar.</p>
                </div>
                <div className="flex items-start space-x-3">
                  <div className="text-violet-400 font-bold">3.</div>
@@ -243,7 +254,7 @@ const App: React.FC = () => {
                </div>
                <div className="p-3 bg-violet-900/20 border border-violet-500/20 rounded-xl mt-2">
                  <p className="text-[10px] text-violet-300">
-                   <strong>Troubleshoot:</strong> If you still see nothing, the hospital site might block "Unsafe Scripts". Check your browser address bar for a shield icon to "Allow scripts".
+                   <strong>Tech Note:</strong> The previous error "React has blocked a javascript: URL" occurred because modern React blocks these links for security. We have patched the generator to bypass this check.
                  </p>
                </div>
             </div>
@@ -251,7 +262,7 @@ const App: React.FC = () => {
         </div>
 
         <footer className="text-center text-slate-700 text-[10px] uppercase tracking-[0.4em] font-medium">
-          Refactored for Stability &bull; v2.1
+          Refactored for Stability &bull; v2.2
         </footer>
       </div>
     </div>
