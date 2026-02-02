@@ -5,10 +5,10 @@ const App: React.FC = () => {
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   /* 
-     CRITICAL FIX: 
-     1. Removed all single-line comments (//) because they break the code when newlines are removed.
-     2. Added Immediate UI feedback (toast) before complex logic runs.
-     3. Wrapped in strict IIFE with error catching.
+     UPDATED: Robust Input Filling
+     We now use Object.getOwnPropertyDescriptor to set the value. 
+     This forces React/Angular to acknowledge the change, whereas 
+     simple element.value = 'x' is often ignored by modern frameworks.
   */
   const bookmarkletCode = `
     (function() {
@@ -160,14 +160,27 @@ const App: React.FC = () => {
 
           if (!text) throw new Error('OCR returned empty. Image too noisy?');
 
-          /* Fill Input */
-          input.value = text;
+          /* ROBUST FILL: Bypass React/Angular state protection */
+          var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+          if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(input, text);
+          } else {
+            input.value = text;
+          }
+          
+          /* Dispatch all possible events to ensure site registers the input */
           input.dispatchEvent(new Event('input', { bubbles: true }));
           input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+          input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
           input.focus();
           
-          updateUI('DONE: ' + text);
-          setTimeout(cleanup, 3000);
+          /* Visual Confirm */
+          input.style.backgroundColor = '#dbeafe'; 
+          input.style.boxShadow = '0 0 0 4px rgba(167, 139, 250, 0.5)';
+          
+          updateUI('FILLED: ' + text);
+          setTimeout(cleanup, 2000);
 
         } catch (e) {
           console.error(e);
@@ -183,11 +196,6 @@ const App: React.FC = () => {
 
   const bookmarkletUrl = `javascript:${encodeURIComponent(bookmarkletCode)}`;
 
-  /* 
-     Fix for React 19+: React now blocks 'javascript:' URLs in href attributes 
-     for security. We use a ref to manually set the href after mount, 
-     bypassing React's validation.
-  */
   useEffect(() => {
     if (linkRef.current) {
       linkRef.current.href = bookmarkletUrl;
@@ -199,13 +207,13 @@ const App: React.FC = () => {
       <div className="max-w-3xl w-full space-y-12">
         <header className="text-center space-y-4">
           <div className="inline-flex items-center px-4 py-1.5 bg-violet-500/10 border border-violet-500/20 text-violet-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v2.2 - React Security Fix
+            v2.3 - Auto-Fill Fix
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
             GHOST <span className="text-violet-500">OCR</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
-            Fixed browser security blocking. Drag the new button below to replace the old one.
+            Updated with robust form-filling technology. Forces text into React, Angular, and legacy inputs.
           </p>
         </header>
 
@@ -222,23 +230,23 @@ const App: React.FC = () => {
             
             <a
               ref={linkRef}
-              href="#" /* React safe placeholder, replaced by useEffect */
+              href="#"
               className="group relative px-12 py-6 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-black text-xl flex items-center space-x-4 shadow-2xl shadow-violet-900/40 transition-all hover:-translate-y-2 select-none cursor-move z-10"
               onClick={(e) => e.preventDefault()}
             >
-              <span>GHOST FILL v2.2</span>
+              <span>GHOST FILL v2.3</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
             </a>
             <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-bold">
-              Fix: Bypassed React 19 HREF blocking
+              Fix: Robust Framework Bypass
             </p>
           </div>
 
           {/* Guide */}
           <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-10 rounded-[2.5rem] space-y-6">
-            <h3 className="text-xl font-bold text-white uppercase tracking-tighter">Installation Fix</h3>
+            <h3 className="text-xl font-bold text-white uppercase tracking-tighter">Installation</h3>
             <div className="space-y-4">
                <div className="flex items-start space-x-3">
                  <div className="text-red-400 font-bold">1.</div>
@@ -246,15 +254,15 @@ const App: React.FC = () => {
                </div>
                <div className="flex items-start space-x-3">
                  <div className="text-violet-400 font-bold">2.</div>
-                 <p className="text-sm text-slate-400">Drag the new <strong>GHOST FILL v2.2</strong> button to your bookmarks bar.</p>
+                 <p className="text-sm text-slate-400">Drag the new <strong>GHOST FILL v2.3</strong> button to your bookmarks bar.</p>
                </div>
                <div className="flex items-start space-x-3">
                  <div className="text-violet-400 font-bold">3.</div>
-                 <p className="text-sm text-slate-400">Go to the portal. Wait for page load. Click the bookmark.</p>
+                 <p className="text-sm text-slate-400">Go to the portal. Click the bookmark. It will now force-fill the text.</p>
                </div>
                <div className="p-3 bg-violet-900/20 border border-violet-500/20 rounded-xl mt-2">
                  <p className="text-[10px] text-violet-300">
-                   <strong>Tech Note:</strong> The previous error "React has blocked a javascript: URL" occurred because modern React blocks these links for security. We have patched the generator to bypass this check.
+                   <strong>Tech Note:</strong> The v2.3 update uses <code>Object.getOwnPropertyDescriptor</code> to bypass React/Vue state protections, ensuring the input value is actually registered by the site.
                  </p>
                </div>
             </div>
@@ -262,7 +270,7 @@ const App: React.FC = () => {
         </div>
 
         <footer className="text-center text-slate-700 text-[10px] uppercase tracking-[0.4em] font-medium">
-          Refactored for Stability &bull; v2.2
+          Refactored for Stability &bull; v2.3
         </footer>
       </div>
     </div>
