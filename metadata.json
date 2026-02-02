@@ -1,0 +1,5 @@
+{
+  "name": "Ghost OCR Auto-Filler",
+  "description": "A high-performance bookmarklet that uses Tesseract.js to locally recognize and auto-fill CAPTCHAs on hospital portals.",
+  "requestFramePermissions": []
+}
