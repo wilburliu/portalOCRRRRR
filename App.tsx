@@ -8,8 +8,9 @@ const App: React.FC = () => {
   const [engine, setEngine] = useState<EngineType>('deep_probe');
 
   /* 
-     V6.0 LOGIC GENERATOR 
+     V6.1 LOGIC GENERATOR 
      "Deep Probe" - Specialized for ASP.NET Portals (NTUH)
+     Refactored to use block comments to avoid minification errors.
   */
   const getBookmarkletCode = () => {
     
@@ -25,7 +26,7 @@ const App: React.FC = () => {
         var idata = ctx.getImageData(0,0,w,h);
         var d = idata.data;
         
-        // 1. Grayscale
+        /* 1. Grayscale */
         var gray = new Uint8Array(w*h);
         var totalLum = 0;
         for(var i=0; i<d.length; i+=4){
@@ -34,13 +35,13 @@ const App: React.FC = () => {
             totalLum += lum;
         }
         
-        // 2. Auto-Invert (if dark background)
+        /* 2. Auto-Invert (if dark background) */
         var avg = totalLum / (w*h);
         if(avg < 128) {
             for(var i=0; i<gray.length; i++) gray[i] = 255 - gray[i];
         }
 
-        // 3. Simple Thresholding (High Contrast)
+        /* 3. Simple Thresholding (High Contrast) */
         for(var i=0; i<d.length; i+=4) {
            var val = gray[i/4] < 135 ? 0 : 255;
            d[i] = d[i+1] = d[i+2] = val; 
@@ -51,7 +52,7 @@ const App: React.FC = () => {
     `;
 
     const commonSetup = `
-      if (window.ghostOCRActive) { alert('Ghost OCR v6.0 is already active.'); return; }
+      if (window.ghostOCRActive) { alert('Ghost OCR v6.1 is already active.'); return; }
       window.ghostOCRActive = true;
       var UI_ID = 'ghost-ocr-hud';
       
@@ -59,7 +60,7 @@ const App: React.FC = () => {
         window.ghostOCRActive = false;
         var el = document.getElementById(UI_ID);
         if (el) el.remove();
-        // Remove debug borders
+        /* Remove debug borders */
         var debugs = document.querySelectorAll('.ghost-debug-border');
         debugs.forEach(e => e.classList.remove('ghost-debug-border'));
       }
@@ -85,11 +86,11 @@ const App: React.FC = () => {
       /* DEEP PROBE SELECTOR */
       function findElements() {
           function scan(root) {
-             // 1. Inputs: Fuzzy Search for ASP.NET patterns (ctl00$txtVerifyCode, etc.)
+             /* 1. Inputs: Fuzzy Search for ASP.NET patterns */
              var inputs = root.querySelectorAll('input[type="text"]:not([readonly]), input[type="tel"], input[type="number"]');
              var targetInput = null;
              
-             // Prioritize exact user request
+             /* Prioritize exact user request */
              var exact = root.getElementById('txtVerifyCode');
              if(exact) targetInput = exact;
              else {
@@ -104,7 +105,7 @@ const App: React.FC = () => {
                  }
              }
              
-             // 2. Images: Fuzzy Search
+             /* 2. Images: Fuzzy Search */
              var imgs = root.querySelectorAll('img, canvas');
              var targetImg = null;
              for(var i=0; i<imgs.length; i++) {
@@ -119,7 +120,7 @@ const App: React.FC = () => {
 
              if(targetInput || targetImg) return { input: targetInput, img: targetImg };
 
-             // 3. Iframe Recursion
+             /* 3. Iframe Recursion */
              var frames = root.querySelectorAll('iframe, frame');
              for(var i=0; i<frames.length; i++){
                  try {
@@ -143,13 +144,13 @@ const App: React.FC = () => {
             var char = text[i];
             input.value += char;
             
-            // Dispatch key events for listeners
+            /* Dispatch key events for listeners */
             var evts = ['keydown', 'keypress', 'input', 'keyup'];
             evts.forEach(function(e){
                 input.dispatchEvent(new KeyboardEvent(e, {key: char, bubbles:true}));
             });
             
-            // Human delay (30-70ms)
+            /* Human delay 30-70ms */
             await new Promise(r => setTimeout(r, 30 + Math.random() * 40));
          }
          
@@ -161,7 +162,7 @@ const App: React.FC = () => {
     const runLogic = `
       async function run() {
         try {
-          updateUI('Ghost v6.0 (Deep Probe)...');
+          updateUI('Ghost v6.1 (Deep Probe)...');
           var els = findElements();
           var img = els.img;
           var input = els.input;
@@ -183,10 +184,10 @@ const App: React.FC = () => {
             if(!img) img = clicked; 
             else input = clicked;
 
-            // If we found one but not the other, try scanning again or ask again
+            /* If we found one but not the other, try scanning again or ask again */
             if(!input || !img) {
-                 // Try one last scan relative to the clicked element? 
-                 // Simple approach: Ask for the second element.
+                 /* Try one last scan relative to the clicked element? */
+                 /* Simple approach: Ask for the second element. */
                  updateUI(input ? 'Now Click the Captcha...' : 'Now Click the Input Box...', true);
                  var clicked2 = await new Promise(r => {
                     function h(e){ e.preventDefault(); e.stopPropagation(); document.removeEventListener('click',h,true); r(e.target); }
@@ -223,7 +224,7 @@ const App: React.FC = () => {
           var ctx = c.getContext('2d');
           if(img instanceof HTMLImageElement && !img.complete) await new Promise(r => img.onload = r);
           
-          // Upscale for accuracy
+          /* Upscale for accuracy */
           var scale = 3;
           c.width = (img.naturalWidth || img.width) * scale;
           c.height = (img.naturalHeight || img.height) * scale;
@@ -283,7 +284,7 @@ const App: React.FC = () => {
       <div className="max-w-4xl w-full space-y-10">
         <header className="text-center space-y-4">
           <div className="inline-flex items-center px-4 py-1.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v6.0 - NTUH Deep Probe
+            v6.1 - NTUH Deep Probe
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
             GHOST <span className={engine === 'deep_probe' ? "text-blue-500" : "text-slate-500"}>OCR</span>
@@ -327,7 +328,7 @@ const App: React.FC = () => {
               className={`group relative px-12 py-6 rounded-2xl text-white font-black text-xl flex items-center space-x-4 shadow-2xl transition-all hover:-translate-y-2 select-none cursor-move z-10 ${engine === 'deep_probe' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/40' : 'bg-slate-600 hover:bg-slate-500'}`}
               onClick={(e) => e.preventDefault()}
             >
-              <span>{engine === 'deep_probe' ? 'GHOST NTUH v6.0' : 'GHOST FILL v6.0'}</span>
+              <span>{engine === 'deep_probe' ? 'GHOST NTUH v6.1' : 'GHOST FILL v6.1'}</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
@@ -343,7 +344,7 @@ const App: React.FC = () => {
                      Deep Probe Technology
                   </h3>
                   <p className="text-sm text-slate-400">
-                      Specifically designed for the NTUH portal. 
+                      Fixed syntax error: Replaced single-line comments.
                   </p>
                   <ul className="space-y-2 text-xs text-slate-400">
                       <li className="flex items-center gap-2">
