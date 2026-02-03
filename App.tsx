@@ -8,8 +8,8 @@ const App: React.FC = () => {
   const [engine, setEngine] = useState<EngineType>('enhanced');
 
   /* 
-     V5.1 LOGIC GENERATOR 
-     Includes advanced filling logic to bypass framework barriers (React/Vue/etc.)
+     V5.2 LOGIC GENERATOR 
+     "Omni-Inject" - Fixes specific ASP.NET/jQuery input resistance
   */
   const getBookmarkletCode = () => {
     
@@ -86,57 +86,112 @@ const App: React.FC = () => {
       }
 
       function findElements() {
-          function search(root, s) {
-              var el = root.querySelector(s);
+          function searchInput(root) {
+              /* 1. Strict ID Match (User Requested) */
+              var el = root.getElementById('txtVerifyCode');
               if(el) return el;
+              
+              /* 2. Strict Name Match */
+              el = root.querySelector('input[name="txtVerifyCode"]');
+              if(el) return el;
+
+              /* 3. Recursive Frame Search */
               var f = root.querySelectorAll('iframe,frame');
               for(var i=0; i<f.length; i++){
                   try {
                       var d = f[i].contentDocument || f[i].contentWindow.document;
-                      if(d) { el = search(d, s); if(el) return el; }
+                      if(d) { 
+                         el = searchInput(d);
+                         if(el) return el; 
+                      }
                   } catch(e){}
               }
               return null;
           }
-          /* Priority targeting for txtVerifyCode as requested */
-          var img = search(document, 'img[id*="Captcha" i], img[id*="Vcode" i], img[src*="Captcha" i], img[src*="code" i], canvas[id*="Captcha" i]');
-          var inp = search(document, 'input[id="txtVerifyCode"], input[name="txtVerifyCode"], input[id*="Captcha" i], input[name*="Verify" i]');
           
-          if(!inp) inp = search(document, 'input[type="text"]:not([readonly])');
-          return { img: img, input: inp };
+          /* Separate Image Search to allow cross-frame references */
+          function searchImg(root) {
+               var el = root.querySelector('img[src*="Captcha" i], img[id*="Captcha" i], img[id*="Vcode" i], img[src*="code" i]');
+               if(el) return el;
+               var f = root.querySelectorAll('iframe,frame');
+               for(var i=0; i<f.length; i++){
+                  try {
+                      var d = f[i].contentDocument || f[i].contentWindow.document;
+                      if(d) { el = searchImg(d); if(el) return el; }
+                  } catch(e){}
+              }
+              return null;
+          }
+
+          var input = searchInput(document);
+          /* Fallback if exact ID not found */
+          if(!input) {
+             console.warn('txtVerifyCode not found, falling back to generic search');
+             // Reuse generic search from previous version if specific fails
+             function genericSearch(root) {
+                 var el = root.querySelector('input[id*="Captcha" i], input[name*="Verify" i]');
+                 if(el) return el;
+                 var f = root.querySelectorAll('iframe,frame');
+                 for(var i=0; i<f.length; i++){ try{ var d=f[i].contentDocument||f[i].contentWindow.document; if(d){el=genericSearch(d);if(el)return el;}}catch(e){} }
+                 return null;
+             }
+             input = genericSearch(document);
+          }
+
+          var img = searchImg(document);
+          return { img: img, input: input };
       }
 
-      /* HYPER-INJECTOR: Bypasses React state tracking */
+      /* OMNI-INJECTOR v5.2: Targets jQuery, React, and Legacy DOM events */
       function forceFill(input, value) {
         input.focus();
+        input.click();
+
+        /* 1. Prototype Setter (React/Vue Bypass) */
         var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        if (setter) {
-            setter.call(input, value);
-        } else {
-            input.value = value;
+        if (setter) setter.call(input, value);
+        else input.value = value;
+        
+        /* 2. jQuery Trigger (Legacy Hospital Portals) */
+        if (window.jQuery && typeof window.jQuery === 'function') {
+            try {
+                window.jQuery(input).val(value).trigger('change').trigger('input').trigger('blur');
+            } catch(e) {}
         }
-        // Notify React/Vue trackers
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        // Physical keyboard event simulation
-        ['keydown', 'keypress', 'keyup'].forEach(type => {
-            input.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, key: value.slice(-1) }));
+
+        /* 3. Legacy Attribute Setter */
+        input.setAttribute('value', value);
+
+        /* 4. Comprehensive Event Dispatch Sequence */
+        var events = [
+            new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: value.slice(-1), charCode: 0, keyCode: 0 }),
+            new KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: value.slice(-1), charCode: 0, keyCode: 0 }),
+            new InputEvent('textInput', { bubbles: true, cancelable: true, data: value }), /* Critical for legacy WebKit */
+            new Event('input', { bubbles: true, cancelable: true }),
+            new Event('change', { bubbles: true, cancelable: true }),
+            new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: value.slice(-1), charCode: 0, keyCode: 0 }),
+            new Event('blur', { bubbles: true, cancelable: true })
+        ];
+
+        events.forEach(function(evt) {
+            input.dispatchEvent(evt);
         });
-        input.blur();
       }
     `;
 
     const runLogic = `
       async function run() {
         try {
-          updateUI('Ghost v5.1 (${engine === 'enhanced' ? 'High Acc' : 'Fast'})...');
+          updateUI('Ghost v5.2 (Omni-Inject)...');
           var els = findElements();
           var img = els.img;
           var input = els.input;
 
           if (!img || !input) {
-            if(!img) updateUI('Click CAPTCHA Image...', true);
-            else updateUI('Click Target Input...', true);
+            if(!img) updateUI('Missing CAPTCHA Image...', true);
+            else updateUI('Missing txtVerifyCode...', true);
+            
+            /* Manual Click Fallback */
             var clicked = await new Promise(r => {
                 function h(e){ e.preventDefault(); e.stopPropagation(); document.removeEventListener('click',h,true); r(e.target); }
                 document.addEventListener('click', h, true);
@@ -144,9 +199,10 @@ const App: React.FC = () => {
             if(!img) img = clicked; else input = clicked;
           }
 
-          input.style.border = '2px solid #10b981';
-          input.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.5)';
-          updateUI('Loading Engine...');
+          /* Highlight Target */
+          input.style.border = '2px solid #f59e0b'; // Amber for attention
+          input.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.6)';
+          updateUI('Processing...');
           
           if (typeof Tesseract === 'undefined') {
               await new Promise((resolve, reject) => {
@@ -171,9 +227,9 @@ const App: React.FC = () => {
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(img, 0, 0, c.width, c.height);
 
-          ${engine === 'enhanced' ? 'updateUI("Applying Neural Polish..."); processImage(c);' : ''}
+          ${engine === 'enhanced' ? 'processImage(c);' : ''}
 
-          updateUI('Running OCR...');
+          updateUI('Reading...');
           var worker = await Tesseract.createWorker('eng', 1);
           await worker.setParameters({ 
             tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
@@ -184,11 +240,11 @@ const App: React.FC = () => {
           await worker.terminate();
 
           var text = res.data.text.replace(/[^a-zA-Z0-9]/g, '').trim();
-          if(!text) throw new Error('OCR Failed to extract text');
+          if(!text) throw new Error('Empty Result');
           
           forceFill(input, text);
           
-          updateUI('SUCCESS: ' + text);
+          updateUI('INJECTED: ' + text);
           setTimeout(cleanup, 2500);
         } catch(e) {
             console.error(e);
@@ -218,15 +274,15 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-[#050505] text-slate-300 flex flex-col items-center justify-center p-6 lg:p-12 font-sans">
       <div className="max-w-4xl w-full space-y-10">
         <header className="text-center space-y-4">
-          <div className="inline-flex items-center px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v5.1 - Hyper-Injector
+          <div className="inline-flex items-center px-4 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-full text-xs font-bold tracking-widest uppercase">
+            v5.2 - Omni-Inject
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
-            GHOST <span className={engine === 'enhanced' ? "text-emerald-500" : "text-slate-500"}>OCR</span>
+            GHOST <span className={engine === 'enhanced' ? "text-amber-500" : "text-slate-500"}>OCR</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
-            Fixed injection for <code className="text-emerald-400">txtVerifyCode</code> fields. 
-            Optimized for hospital portal systems.
+            Prioritizes <code className="text-amber-400">txtVerifyCode</code> with jQuery support.
+            Ensures compatibility with legacy hospital frameworks.
           </p>
         </header>
 
@@ -240,55 +296,69 @@ const App: React.FC = () => {
                 </button>
                 <button 
                     onClick={() => setEngine('enhanced')}
-                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${engine === 'enhanced' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'hover:text-white text-slate-500'}`}
+                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${engine === 'enhanced' ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/20' : 'hover:text-white text-slate-500'}`}
                 >
-                    Neural Polish (High Acc)
+                    Omni-Inject (High Acc)
                 </button>
             </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 items-start">
-          <div className={`bg-slate-900/40 backdrop-blur-xl border p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center space-y-8 shadow-2xl relative overflow-hidden transition-colors ${engine === 'enhanced' ? 'border-emerald-500/10' : 'border-slate-500/10'}`}>
-            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent opacity-50 ${engine === 'enhanced' ? 'via-emerald-500' : 'via-slate-500'}`}></div>
+          <div className={`bg-slate-900/40 backdrop-blur-xl border p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center space-y-8 shadow-2xl relative overflow-hidden transition-colors ${engine === 'enhanced' ? 'border-amber-500/10' : 'border-slate-500/10'}`}>
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent opacity-50 ${engine === 'enhanced' ? 'via-amber-500' : 'via-slate-500'}`}></div>
             
-            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shadow-inner ${engine === 'enhanced' ? 'bg-emerald-600/20 text-emerald-500' : 'bg-slate-700/20 text-slate-400'}`}>
+            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shadow-inner ${engine === 'enhanced' ? 'bg-amber-600/20 text-amber-500' : 'bg-slate-700/20 text-slate-400'}`}>
               <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.2-2.858.578-4.18M7.5 21H6M10 21h3m-5 0h1" />
               </svg>
             </div>
             
             <a
               ref={linkRef}
               href="#"
-              className={`group relative px-12 py-6 rounded-2xl text-white font-black text-xl flex items-center space-x-4 shadow-2xl transition-all hover:-translate-y-2 select-none cursor-move z-10 ${engine === 'enhanced' ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/40' : 'bg-slate-600 hover:bg-slate-500'}`}
+              className={`group relative px-12 py-6 rounded-2xl text-white font-black text-xl flex items-center space-x-4 shadow-2xl transition-all hover:-translate-y-2 select-none cursor-move z-10 ${engine === 'enhanced' ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/40' : 'bg-slate-600 hover:bg-slate-500'}`}
               onClick={(e) => e.preventDefault()}
             >
-              <span>{engine === 'enhanced' ? 'GHOST INJECT v5.1' : 'GHOST FILL v5.1'}</span>
+              <span>{engine === 'enhanced' ? 'GHOST OMNI v5.2' : 'GHOST FILL v5.2'}</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
             </a>
             <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-bold">
-              Target ID: txtVerifyCode &bull; Bypass React State
+              Target: #txtVerifyCode &bull; jQuery + React + Native
             </p>
           </div>
 
           <div className="space-y-6">
-              <div className={`bg-slate-900/40 backdrop-blur-xl border p-8 rounded-[2rem] space-y-6 ${engine === 'enhanced' ? 'border-emerald-500/20' : 'border-white/5'}`}>
+              <div className={`bg-slate-900/40 backdrop-blur-xl border p-8 rounded-[2rem] space-y-6 ${engine === 'enhanced' ? 'border-amber-500/20' : 'border-white/5'}`}>
                   <h3 className="text-xl font-bold text-white uppercase tracking-tighter flex items-center gap-2">
-                     Updated v5.1 Engine
+                     Omni-Inject Technology
                   </h3>
                   <p className="text-sm text-slate-400">
-                      We added a <code className="text-emerald-400 font-mono">ForceFill</code> mechanism that interacts directly with the input element's prototype. This ensures that even if the hospital portal uses a framework that "hides" the input's value, our ghost script can still inject the code successfully.
+                      Specifically engineered for stubborn hospital forms.
                   </p>
+                  <ul className="space-y-2 text-xs text-slate-400">
+                      <li className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                        Scans recursively for <code>id="txtVerifyCode"</code> inside iFrames.
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                        Triggers <code>window.jQuery(el).val().trigger('change')</code> if detected.
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                        Dispatches legacy <code>textInput</code> events for older WebKit browsers.
+                      </li>
+                  </ul>
               </div>
 
                <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-8 rounded-[2rem] space-y-4">
-                  <h4 className="text-sm font-bold text-slate-300 uppercase">Usage Steps</h4>
+                  <h4 className="text-sm font-bold text-slate-300 uppercase">Usage</h4>
                    <ul className="space-y-3 text-sm text-slate-400">
-                        <li className="flex gap-3"><span className="text-emerald-400 font-bold">1.</span> <span>Drag the green button above into your bookmarks bar.</span></li>
-                        <li className="flex gap-3"><span className="text-emerald-400 font-bold">2.</span> <span>Open your target hospital login page.</span></li>
-                        <li className="flex gap-3"><span className="text-emerald-400 font-bold">3.</span> <span>Click the bookmark. It will auto-detect the image and the input box.</span></li>
+                        <li className="flex gap-3"><span className="text-amber-400 font-bold">1.</span> <span>Update bookmark with the button above.</span></li>
+                        <li className="flex gap-3"><span className="text-amber-400 font-bold">2.</span> <span>Go to Hospital Portal.</span></li>
+                        <li className="flex gap-3"><span className="text-amber-400 font-bold">3.</span> <span>Click to fill.</span></li>
                     </ul>
                </div>
           </div>
