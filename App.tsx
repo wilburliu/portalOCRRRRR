@@ -1,16 +1,14 @@
 
-import React, { useEffect, useRef, useState } from 'react';
-
-type EngineType = 'standard' | 'deep_probe';
+import React, { useEffect, useRef } from 'react';
 
 const App: React.FC = () => {
   const linkRef = useRef<HTMLAnchorElement>(null);
-  const [engine, setEngine] = useState<EngineType>('deep_probe');
 
   /* 
-     V6.1 LOGIC GENERATOR 
+     V6.3 LOGIC GENERATOR 
      "Deep Probe" - Specialized for ASP.NET Portals (NTUH)
-     Refactored to use block comments to avoid minification errors.
+     Added: Auto-Login targeting 'imgBtnSubmitNew'.
+     Fixed: SyntaxError due to single-line comment.
   */
   const getBookmarkletCode = () => {
     
@@ -52,7 +50,7 @@ const App: React.FC = () => {
     `;
 
     const commonSetup = `
-      if (window.ghostOCRActive) { alert('Ghost OCR v6.1 is already active.'); return; }
+      if (window.ghostOCRActive) { alert('Ghost OCR v6.3 is already active.'); return; }
       window.ghostOCRActive = true;
       var UI_ID = 'ghost-ocr-hud';
       
@@ -118,9 +116,35 @@ const App: React.FC = () => {
                  }
              }
 
-             if(targetInput || targetImg) return { input: targetInput, img: targetImg };
+             /* 3. Submit Button: Targeted Search for imgBtnSubmitNew */
+             var targetSubmit = null;
+             
+             /* High Priority: imgBtnSubmitNew (NTUH specific) */
+             var specificBtn = root.querySelector('[name="imgBtnSubmitNew"], [id="imgBtnSubmitNew"]');
+             if (specificBtn) {
+                 targetSubmit = specificBtn;
+             } else {
+                 /* Low Priority: Fuzzy Search */
+                 var submits = root.querySelectorAll('input[type="submit"], button, a.button, a[role="button"], input[type="image"]');
+                 var exactBtn = root.getElementById('btnLogin');
+                 if(exactBtn) targetSubmit = exactBtn;
+                 else {
+                    for(var i=0; i<submits.length; i++) {
+                        var id = (submits[i].id || '').toLowerCase();
+                        var name = (submits[i].name || '').toLowerCase();
+                        var val = (submits[i].value || submits[i].innerText || '').toLowerCase();
+                        if (id.indexOf('login') > -1 || name.indexOf('login') > -1 || id.indexOf('btn') > -1 || 
+                            val.indexOf('登入') > -1 || val.indexOf('login') > -1 || val.indexOf('sign in') > -1) {
+                            targetSubmit = submits[i];
+                            break;
+                        }
+                    }
+                 }
+             }
 
-             /* 3. Iframe Recursion */
+             if(targetInput || targetImg || targetSubmit) return { input: targetInput, img: targetImg, submit: targetSubmit };
+
+             /* 4. Iframe Recursion */
              var frames = root.querySelectorAll('iframe, frame');
              for(var i=0; i<frames.length; i++){
                  try {
@@ -129,7 +153,7 @@ const App: React.FC = () => {
                     if(res.input || res.img) return res; 
                  } catch(e){}
              }
-             return { input: null, img: null };
+             return { input: null, img: null, submit: null };
           }
           return scan(document);
       }
@@ -162,10 +186,11 @@ const App: React.FC = () => {
     const runLogic = `
       async function run() {
         try {
-          updateUI('Ghost v6.1 (Deep Probe)...');
+          updateUI('Ghost v6.3 (Auto-Login)...');
           var els = findElements();
           var img = els.img;
           var input = els.input;
+          var submit = els.submit;
 
           /* FALLBACK: Manual Selection */
           if (!img || !input) {
@@ -186,8 +211,6 @@ const App: React.FC = () => {
 
             /* If we found one but not the other, try scanning again or ask again */
             if(!input || !img) {
-                 /* Try one last scan relative to the clicked element? */
-                 /* Simple approach: Ask for the second element. */
                  updateUI(input ? 'Now Click the Captcha...' : 'Now Click the Input Box...', true);
                  var clicked2 = await new Promise(r => {
                     function h(e){ e.preventDefault(); e.stopPropagation(); document.removeEventListener('click',h,true); r(e.target); }
@@ -206,6 +229,10 @@ const App: React.FC = () => {
           if(img) {
               img.style.border = '3px solid #0f0';
               img.classList.add('ghost-debug-border');
+          }
+          if(submit) {
+              submit.style.border = '3px solid #00f';
+              submit.classList.add('ghost-debug-border');
           }
 
           updateUI('Loading Engine...');
@@ -253,8 +280,20 @@ const App: React.FC = () => {
           /* CLIPBOARD BACKUP */
           try { navigator.clipboard.writeText(text); } catch(e){}
 
-          updateUI('DONE! (Code Copied)');
-          setTimeout(cleanup, 3000);
+          /* AUTO-LOGIN EXECUTION */
+          updateUI('Logging In...');
+          await new Promise(r => setTimeout(r, 400)); /* Short human delay */
+          
+          if (submit) {
+             submit.click();
+             updateUI('DONE! (Clicked Login)');
+          } else {
+             /* Fallback: Press Enter on the input */
+             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+             updateUI('DONE! (Sent Enter Key)');
+          }
+
+          setTimeout(cleanup, 4000);
         } catch(e) {
             console.error(e);
             updateUI('Error: ' + e.message, true);
@@ -277,46 +316,29 @@ const App: React.FC = () => {
     if (linkRef.current) {
       linkRef.current.href = `javascript:${encodeURIComponent(getBookmarkletCode())}`;
     }
-  }, [engine]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-300 flex flex-col items-center justify-center p-6 lg:p-12 font-sans">
       <div className="max-w-4xl w-full space-y-10">
         <header className="text-center space-y-4">
           <div className="inline-flex items-center px-4 py-1.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v6.1 - NTUH Deep Probe
+            v6.3 - NTUH Auto-Login
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
-            GHOST <span className={engine === 'deep_probe' ? "text-blue-500" : "text-slate-500"}>OCR</span>
+            GHOST <span className="text-blue-500">OCR</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
             Engineered for <code className="text-blue-400">portal.ntuh.gov.tw</code>.
-            Features fuzzy ID matching, visual debugging, and human typing simulation.
+            Features fuzzy ID matching, visual debugging, and <span className="text-white font-bold">Auto-Login</span>.
           </p>
         </header>
 
-        <div className="flex justify-center">
-            <div className="bg-slate-900/80 p-1.5 rounded-xl border border-white/10 flex space-x-2">
-                <button 
-                    onClick={() => setEngine('standard')}
-                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${engine === 'standard' ? 'bg-slate-700 text-white shadow-lg' : 'hover:text-white text-slate-500'}`}
-                >
-                    Standard
-                </button>
-                <button 
-                    onClick={() => setEngine('deep_probe')}
-                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${engine === 'deep_probe' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:text-white text-slate-500'}`}
-                >
-                    Deep Probe (NTUH)
-                </button>
-            </div>
-        </div>
-
         <div className="grid md:grid-cols-2 gap-8 items-start">
-          <div className={`bg-slate-900/40 backdrop-blur-xl border p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center space-y-8 shadow-2xl relative overflow-hidden transition-colors ${engine === 'deep_probe' ? 'border-blue-500/10' : 'border-slate-500/10'}`}>
-            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent opacity-50 ${engine === 'deep_probe' ? 'via-blue-500' : 'via-slate-500'}`}></div>
+          <div className="bg-slate-900/40 backdrop-blur-xl border p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center space-y-8 shadow-2xl relative overflow-hidden transition-colors border-blue-500/10">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent opacity-50 via-blue-500"></div>
             
-            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shadow-inner ${engine === 'deep_probe' ? 'bg-blue-600/20 text-blue-500' : 'bg-slate-700/20 text-slate-400'}`}>
+            <div className="w-20 h-20 rounded-3xl flex items-center justify-center shadow-inner bg-blue-600/20 text-blue-500">
               <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
               </svg>
@@ -325,26 +347,26 @@ const App: React.FC = () => {
             <a
               ref={linkRef}
               href="#"
-              className={`group relative px-12 py-6 rounded-2xl text-white font-black text-xl flex items-center space-x-4 shadow-2xl transition-all hover:-translate-y-2 select-none cursor-move z-10 ${engine === 'deep_probe' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/40' : 'bg-slate-600 hover:bg-slate-500'}`}
+              className="group relative px-12 py-6 rounded-2xl text-white font-black text-xl flex items-center space-x-4 shadow-2xl transition-all hover:-translate-y-2 select-none cursor-move z-10 bg-blue-600 hover:bg-blue-500 shadow-blue-900/40"
               onClick={(e) => e.preventDefault()}
             >
-              <span>{engine === 'deep_probe' ? 'GHOST NTUH v6.1' : 'GHOST FILL v6.1'}</span>
+              <span>GHOST NTUH v6.3</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
             </a>
             <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-bold">
-              ASP.NET Compatible &bull; Click Fallback Support
+              ASP.NET Compatible &bull; Click Fallback &bull; Auto Login
             </p>
           </div>
 
           <div className="space-y-6">
-              <div className={`bg-slate-900/40 backdrop-blur-xl border p-8 rounded-[2rem] space-y-6 ${engine === 'deep_probe' ? 'border-blue-500/20' : 'border-white/5'}`}>
+              <div className="bg-slate-900/40 backdrop-blur-xl border p-8 rounded-[2rem] space-y-6 border-blue-500/20">
                   <h3 className="text-xl font-bold text-white uppercase tracking-tighter flex items-center gap-2">
                      Deep Probe Technology
                   </h3>
                   <p className="text-sm text-slate-400">
-                      Fixed syntax error: Replaced single-line comments.
+                      Single-engine dedicated to solving NTUH Portal CAPTCHAs.
                   </p>
                   <ul className="space-y-2 text-xs text-slate-400">
                       <li className="flex items-center gap-2">
@@ -357,7 +379,7 @@ const App: React.FC = () => {
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                        <strong>Clipboard:</strong> Copies code to clipboard as backup.
+                        <strong>Auto-Login:</strong> Clicks <code className="bg-slate-800 px-1 rounded">imgBtnSubmitNew</code> automatically.
                       </li>
                   </ul>
               </div>
@@ -367,7 +389,7 @@ const App: React.FC = () => {
                    <ul className="space-y-3 text-sm text-slate-400">
                         <li className="flex gap-3"><span className="text-blue-400 font-bold">1.</span> <span>Drag button to bookmarks.</span></li>
                         <li className="flex gap-3"><span className="text-blue-400 font-bold">2.</span> <span>Go to NTUH Portal.</span></li>
-                        <li className="flex gap-3"><span className="text-blue-400 font-bold">3.</span> <span>Click. If it fails to find the box, it will ask you to click it.</span></li>
+                        <li className="flex gap-3"><span className="text-blue-400 font-bold">3.</span> <span>Click. It will fill the code and log you in.</span></li>
                     </ul>
                </div>
           </div>
