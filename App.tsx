@@ -4,101 +4,32 @@ import React, { useEffect, useRef } from 'react';
 const App: React.FC = () => {
   const linkRef = useRef<HTMLAnchorElement>(null);
 
-  /* 
-     V7.0 LOGIC GENERATOR 
-     "Adaptive Vision" - OCR Accuracy Overhaul
-     Improvements over v6.3:
-       - Gaussian blur (3x3) before threshold  → kills noise speckles
-       - Otsu's auto-threshold               → adapts to each CAPTCHA's brightness
-       - 12px white padding                  → prevents edge character clipping
-       - Scale 4x (was 3x)                   → higher res for Tesseract
-       - Multi-pass OCR (bias 0/+20/-20)     → picks highest-confidence pass
+  /*
+     V8.0 LOGIC GENERATOR
+     "Neural Vision" - custom CNN replaces Tesseract
+     The CAPTCHA is a fixed format (6 chars, [0-9A-Z], fixed font, colored-line
+     noise). A small 6-head CNN trained on synthetic look-alikes (see training/)
+     reads it far more reliably than a general OCR engine. Inference runs fully
+     client-side via onnxruntime-web — the image never leaves the browser.
+       - Model: 3 conv blocks -> 6 softmax heads (one per character)
+       - Input: captcha resized to 192x64 RGB, normalized /255 (NCHW)
+       - Color is a feature: the net learns to ignore the colored noise lines,
+         so no fragile binarization/threshold step is needed.
   */
   const getBookmarkletCode = () => {
 
     /* ────────────────────────────────────────────────────
-       VISION KERNEL v2  –  Adaptive multi-pass pipeline
+       MODEL CONFIG  –  must match training/config.py
     ──────────────────────────────────────────────────── */
-    const visionKernel = `
-      /* Convert RGBA pixel array to Float32 grayscale */
-      function toGray(d, w, h) {
-          var g = new Float32Array(w*h);
-          for(var i=0;i<d.length;i+=4)
-              g[i>>2] = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
-          return g;
-      }
-
-      /* 3×3 Gaussian blur – smooths noise before thresholding */
-      function gaussBlur(g, w, h) {
-          var k=[1,2,1,2,4,2,1,2,1], o=new Float32Array(w*h);
-          for(var y=0;y<h;y++) for(var x=0;x<w;x++){
-              var s=0,ki=0;
-              for(var dy=-1;dy<=1;dy++) for(var dx=-1;dx<=1;dx++){
-                  var ny=Math.max(0,Math.min(h-1,y+dy));
-                  var nx=Math.max(0,Math.min(w-1,x+dx));
-                  s+=g[ny*w+nx]*k[ki++];
-              }
-              o[y*w+x]=s/16;
-          }
-          return o;
-      }
-
-      /* Otsu's method – finds optimal threshold for bimodal histogram */
-      function otsu(g) {
-          var n=g.length, hist=new Int32Array(256);
-          for(var i=0;i<n;i++) hist[Math.min(255,g[i]|0)]++;
-          var sum=0; for(var t=0;t<256;t++) sum+=t*hist[t];
-          var sB=0,wB=0,mx=0,T=128;
-          for(var t=0;t<256;t++){
-              wB+=hist[t]; if(!wB) continue;
-              var wF=n-wB; if(!wF) break;
-              sB+=t*hist[t];
-              var mB=sB/wB, mF=(sum-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF);
-              if(v>mx){mx=v;T=t;}
-          }
-          return T;
-      }
-
-      /*
-        makeProcessed(srcCanvas, bias)
-        Returns a NEW canvas: padded, blurred, binarized.
-        bias shifts the Otsu threshold up or down (+20 / 0 / -20).
-      */
-      function makeProcessed(src, bias) {
-          var PAD=12, sw=src.width, sh=src.height;
-          var c=document.createElement('canvas');
-          c.width=sw+PAD*2; c.height=sh+PAD*2;
-          var ctx=c.getContext('2d');
-
-          /* White background then paste source centered */
-          ctx.fillStyle='#ffffff';
-          ctx.fillRect(0,0,c.width,c.height);
-          ctx.drawImage(src,PAD,PAD);
-
-          var id=ctx.getImageData(0,0,c.width,c.height), d=id.data;
-          var g=gaussBlur(toGray(d,c.width,c.height),c.width,c.height);
-
-          /* Clamp threshold to a safe range */
-          var T=Math.max(60,Math.min(210, otsu(g)+(bias||0)));
-
-          /* Detect dark-on-light vs light-on-dark
-             (after padding, most extra pixels are white → ratio < 0.55 is typical) */
-          var dark=0;
-          for(var i=0;i<g.length;i++) if(g[i]<T) dark++;
-          var inv=dark > g.length*0.55;
-
-          /* Binarise */
-          for(var i=0;i<d.length;i+=4){
-              var fg=inv?(g[i>>2]>=T):(g[i>>2]<T);
-              d[i]=d[i+1]=d[i+2]=fg?0:255; d[i+3]=255;
-          }
-          ctx.putImageData(id,0,0);
-          return c;
-      }
-    `;
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/wilburliu/portalOCRRRRR@main/model.onnx';
+    const ORT_SCRIPT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js';
+    const ORT_WASM_PATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
+    const CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const NUM_CHARS = 6;
+    const IMG_W = 192, IMG_H = 64;
 
     const commonSetup = `
-      if (window.ghostOCRActive) { alert('Ghost OCR v7.0 is already active.'); return; }
+      if (window.ghostOCRActive) { alert('Ghost OCR v8.0 is already active.'); return; }
       window.ghostOCRActive = true;
       var UI_ID = 'ghost-ocr-hud';
       
@@ -220,7 +151,7 @@ const App: React.FC = () => {
     const runLogic = `
       async function run() {
         try {
-          updateUI('Ghost v7.0 (Adaptive)...');
+          updateUI('Ghost v8.0 (Neural)...');
           var els = findElements();
           var img = els.img;
           var input = els.input;
@@ -268,59 +199,100 @@ const App: React.FC = () => {
               submit.classList.add('ghost-debug-border');
           }
 
-          updateUI('Loading Engine...');
-          
-          if (typeof Tesseract === 'undefined') {
+          updateUI('Loading Neural Engine...');
+
+          /* Load onnxruntime-web (once) */
+          if (typeof ort === 'undefined') {
               await new Promise((resolve, reject) => {
                   var s = document.createElement('script');
-                  s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+                  s.src = '${ORT_SCRIPT}';
                   s.onload = resolve;
                   s.onerror = reject;
                   document.head.appendChild(s);
               });
           }
+          ort.env.wasm.wasmPaths = '${ORT_WASM_PATH}';
 
           /* Wait for image to fully load */
           if(img instanceof HTMLImageElement && !img.complete)
               await new Promise(r => img.onload = r);
-          
-          /* ── STEP 1: Upscale raw canvas to 4× ── */
-          var scale = 4;
-          var rawCanvas = document.createElement('canvas');
-          var rawCtx = rawCanvas.getContext('2d');
-          rawCanvas.width  = (img.naturalWidth  || img.width)  * scale;
-          rawCanvas.height = (img.naturalHeight || img.height) * scale;
-          rawCtx.drawImage(img, 0, 0, rawCanvas.width, rawCanvas.height);
 
-          /* ── STEP 2: Multi-pass OCR — Otsu + 3 bias offsets ── */
-          updateUI('Reading (Adaptive)...');
-          var worker = await Tesseract.createWorker('eng', 1);
-          await worker.setParameters({ 
-            tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-            tessedit_pageseg_mode: '7',
-            tessedit_unrej_any_wd: '1'
-          });
+          /* Cache the session across runs on the page */
+          if(!window.__ghostSession)
+              window.__ghostSession = await ort.InferenceSession.create('${MODEL_URL}');
+          var session = window.__ghostSession;
 
-          var biases = [0, 20, -20];
-          var bestText = '', bestConf = -1;
+          /* ── Preprocess: crop to glyph bbox, resize to ${IMG_W}x${IMG_H} RGB, normalize /255, NCHW ── */
+          updateUI('Reading (Neural)...');
+          var W = ${IMG_W}, H = ${IMG_H};
 
-          for(var bi=0; bi<biases.length; bi++){
-              try {
-                  var processed = makeProcessed(rawCanvas, biases[bi]);
-                  var res = await worker.recognize(processed);
-                  var candidate = res.data.text.replace(/[^a-zA-Z0-9]/g,'').trim().toUpperCase();
-                  if(candidate.length > 0 && res.data.confidence > bestConf){
-                      bestConf = res.data.confidence;
-                      bestText = candidate;
-                  }
-              } catch(e){}
+          /* Content-aware crop — MUST match crop_to_content() in
+             training/generate_synthetic.py. The model is trained on images
+             cropped to the dark glyph bounding box then stretched to WxH, so we
+             replicate that here (a plain resize misaligns the column-pooling head). */
+          var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+          var sc = document.createElement('canvas');
+          sc.width = nw; sc.height = nh;
+          var sctx = sc.getContext('2d');
+          sctx.drawImage(img, 0, 0, nw, nh);
+          var sd = sctx.getImageData(0, 0, nw, nh).data;
+          var LUM = 110;                                  /* CROP_LUM_THR */
+          var colCnt = new Int32Array(nw), rowCnt = new Int32Array(nh);
+          for(var yy = 0; yy < nh; yy++){
+              for(var xx = 0; xx < nw; xx++){
+                  var o = (yy*nw + xx) * 4;
+                  var lum = sd[o]*0.299 + sd[o+1]*0.587 + sd[o+2]*0.114;
+                  if(lum < LUM){ colCnt[xx]++; rowCnt[yy]++; }
+              }
+          }
+          var cthr = Math.max(1, Math.floor(0.06*nh));
+          var rthr = Math.max(1, Math.floor(0.04*nw));
+          var x0 = -1, x1 = -1, y0 = -1, y1 = -1;
+          for(var xx = 0; xx < nw; xx++){ if(colCnt[xx] > cthr){ if(x0 < 0) x0 = xx; x1 = xx; } }
+          for(var yy = 0; yy < nh; yy++){ if(rowCnt[yy] > rthr){ if(y0 < 0) y0 = yy; y1 = yy; } }
+          var pad = 2, sx, sy, sw, sh;                    /* CROP_PAD */
+          if(x0 < 0 || y0 < 0){ sx = 0; sy = 0; sw = nw; sh = nh; }   /* nothing found -> whole image */
+          else {
+              sx = Math.max(0, x0 - pad);
+              sy = Math.max(0, y0 - pad);
+              sw = Math.min(nw, x1 + 1 + pad) - sx;
+              sh = Math.min(nh, y1 + 1 + pad) - sy;
           }
 
-          await worker.terminate();
+          var pc = document.createElement('canvas');
+          pc.width = W; pc.height = H;
+          var pctx = pc.getContext('2d');
+          pctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);   /* crop + stretch */
+          var px = pctx.getImageData(0, 0, W, H).data;   /* RGBA */
+          var plane = W * H;
+          var f = new Float32Array(3 * plane);
+          for(var p = 0; p < plane; p++){
+              f[p]           = px[p*4]     / 255;   /* R */
+              f[plane + p]   = px[p*4 + 1] / 255;   /* G */
+              f[2*plane + p] = px[p*4 + 2] / 255;   /* B */
+          }
+          var tensor = new ort.Tensor('float32', f, [1, 3, H, W]);
+          var out = await session.run({ input: tensor });
+          var logits = (out.logits || out[Object.keys(out)[0]]).data;
 
-          var text = bestText;
+          /* ── Decode: per-head argmax + softmax confidence ── */
+          var CHARSET = '${CHARSET}';
+          var NC = CHARSET.length, NUM = ${NUM_CHARS};
+          var text = '', confSum = 0;
+          for(var ci = 0; ci < NUM; ci++){
+              var bestK = 0, bestV = -1e9, mx = -1e9, sum = 0;
+              for(var k = 0; k < NC; k++){
+                  var v = logits[ci*NC + k];
+                  if(v > bestV){ bestV = v; bestK = k; }
+                  if(v > mx) mx = v;
+              }
+              for(var k = 0; k < NC; k++) sum += Math.exp(logits[ci*NC + k] - mx);
+              confSum += Math.exp(bestV - mx) / sum;   /* top-1 softmax prob */
+              text += CHARSET[bestK];
+          }
+          var bestConf = (confSum / NUM) * 100;
           if(!text) throw new Error('No text found');
-          
+
           updateUI('Typing: ' + text + '  (conf:' + Math.round(bestConf) + '%)');
           
           /* TYPEWRITER FILL */
@@ -350,11 +322,10 @@ const App: React.FC = () => {
       }
     `;
 
-    const fullScript = `(function(){ 
-        ${visionKernel}
-        ${commonSetup} 
-        ${runLogic} 
-        run(); 
+    const fullScript = `(function(){
+        ${commonSetup}
+        ${runLogic}
+        run();
     })();`.replace(/\s+/g, ' ');
     
     return fullScript;
@@ -371,14 +342,14 @@ const App: React.FC = () => {
       <div className="max-w-4xl w-full space-y-10">
         <header className="text-center space-y-4">
           <div className="inline-flex items-center px-4 py-1.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-full text-xs font-bold tracking-widest uppercase">
-            v7.0 – Adaptive Vision
+            v8.0 – Neural Vision
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
             GHOST <span className="text-blue-500">OCR</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
             Engineered for <code className="text-blue-400">portal.ntuh.gov.tw</code>.
-            Adaptive threshold · Noise filtering · Multi-pass · <span className="text-white font-bold">Auto-Login</span>.
+            Custom CNN · On-device inference · Noise-robust · <span className="text-white font-bold">Auto-Login</span>.
           </p>
         </header>
 
@@ -398,40 +369,40 @@ const App: React.FC = () => {
               className="group relative px-12 py-6 rounded-2xl text-white font-black text-xl flex items-center space-x-4 shadow-2xl transition-all hover:-translate-y-2 select-none cursor-move z-10 bg-blue-600 hover:bg-blue-500 shadow-blue-900/40"
               onClick={(e) => e.preventDefault()}
             >
-              <span>GHOST NTUH v7.0</span>
+              <span>GHOST NTUH v8.0</span>
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none uppercase tracking-widest">
                 Drag to Bookmarks Bar
               </div>
             </a>
             <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-bold">
-              Adaptive OCR &bull; 4× Scale &bull; Multi-Pass &bull; Auto Login
+              Neural CNN &bull; On-Device &bull; 6-Head Decode &bull; Auto Login
             </p>
           </div>
 
           <div className="space-y-6">
               <div className="bg-slate-900/40 backdrop-blur-xl border p-8 rounded-[2rem] space-y-6 border-blue-500/20">
                   <h3 className="text-xl font-bold text-white uppercase tracking-tighter flex items-center gap-2">
-                     Adaptive Vision v7.0
+                     Neural Vision v8.0
                   </h3>
                   <p className="text-sm text-slate-400">
-                      Overhauled OCR pipeline for higher accuracy on NTUH Portal CAPTCHAs.
+                      A custom CNN trained on this CAPTCHA's exact style — far more accurate than general OCR.
                   </p>
                   <ul className="space-y-2 text-xs text-slate-400">
                       <li className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                        <strong>Otsu Threshold:</strong> Auto-computes optimal binarization per CAPTCHA.
+                        <strong>Custom CNN:</strong> 6-head model, one softmax per character.
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                        <strong>Gaussian Blur:</strong> Smooths noise before thresholding.
+                        <strong>On-Device:</strong> Runs via onnxruntime-web — the image never leaves your browser.
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                        <strong>4× Scale + Padding:</strong> More pixels, no edge clipping.
+                        <strong>Noise-Robust:</strong> Trained to ignore the colored noise lines, no thresholding.
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                        <strong>Multi-Pass:</strong> Tries 3 threshold variants, picks highest confidence.
+                        <strong>Synthetic Training:</strong> Thousands of look-alike CAPTCHAs (see <code className="bg-slate-800 px-1 rounded">training/</code>).
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>

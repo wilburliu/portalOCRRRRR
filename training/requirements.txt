@@ -1,0 +1,6 @@
+torch>=2.0
+torchvision>=0.15
+pillow>=9.0
+numpy>=1.23,<2  # torch 2.2.x is built against NumPy 1.x
+onnx>=1.14
+onnxruntime>=1.16

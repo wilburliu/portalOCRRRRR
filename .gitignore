@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Training artifacts (model.onnx at repo root IS committed — jsDelivr serves it)
+training/dataset/
+training/preview.png
+training/__pycache__/
+training/model.onnx
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
